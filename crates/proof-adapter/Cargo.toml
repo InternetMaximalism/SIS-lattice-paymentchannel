@@ -1,0 +1,10 @@
+[package]
+name = "proof-adapter"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+channel-types.workspace = true
+serde.workspace = true
+sis_amount_stark.workspace = true
+thiserror.workspace = true

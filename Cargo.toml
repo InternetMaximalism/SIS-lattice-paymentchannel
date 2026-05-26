@@ -1,0 +1,15 @@
+[workspace]
+members = ["crates/channel-state","crates/channel-types", "crates/proof-adapter"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+
+[workspace.dependencies]
+channel-types = { path = "crates/channel-types" }
+proof-adapter = { path = "crates/proof-adapter" }
+serde = { version = "1", features = ["derive"] }
+sha3 = "0.10"
+sis_amount_stark = { git = "https://github.com/InternetMaximalism/SIS-lattice-private-balance.git", rev = "8eedf2d01cf8b0295bebcb6a330ef79eac6bd95f" }
+thiserror = "2"

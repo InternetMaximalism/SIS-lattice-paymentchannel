@@ -1,0 +1,9 @@
+[package]
+name = "channel-state"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+channel-types.workspace = true
+proof-adapter.workspace = true
+thiserror.workspace = true
