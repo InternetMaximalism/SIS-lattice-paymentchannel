@@ -1,10 +1,10 @@
 # SIS Lattice Multi-Party Payment Channel Coding Plan
 
-## 1. 実装方針
+## 1. Implementation Strategy
 
-このリポジトリは空なので、最初から workspace を切る。`SIS-lattice-private-balance` はコピーせず、pinned git dependency として import する。
+This repository started empty, so the implementation is organized as a workspace from the beginning. `SIS-lattice-private-balance` is imported as a pinned git dependency rather than copied into the repository.
 
-推奨レイアウト:
+Recommended layout:
 
 ```text
 Cargo.toml
@@ -19,262 +19,263 @@ contracts/
 docs/
 ```
 
-## 2. フェーズ別計画
+## 2. Phased Plan
 
 ### Phase 0: Bootstrap
 
-目的:
+Goals:
 
-- workspace の骨格を作る
-- upstream proof crate を git import で pin して再現可能にする
-- 共通 lint / format / CI を入れる
+- create the workspace skeleton
+- pin the upstream proof crate through git import for reproducibility
+- add shared linting, formatting, and CI basics
 
-作業:
+Work:
 
-- root `Cargo.toml` を workspace 化
-- `sis_amount_stark = { git = \"https://github.com/InternetMaximalism/SIS-lattice-private-balance.git\", rev = \"8ab35b5bbb58666fca7fd56e21d33fed3e66fcea\" }` を設定
-- `rustfmt`, `clippy`, `cargo-nextest` の設定
-- Solidity 側を使うなら `foundry.toml` を追加
+- turn the root `Cargo.toml` into a workspace manifest
+- configure `sis_amount_stark = { git = "https://github.com/InternetMaximalism/SIS-lattice-private-balance.git", rev = "8eedf2d01cf8b0295bebcb6a330ef79eac6bd95f" }`
+- add `rustfmt`, `clippy`, and `cargo-nextest` settings
+- add `foundry.toml` if Solidity work starts
 
-完了条件:
+Done when:
 
-- import した `sis_amount_stark` を使う最小テストが通る
-- 新規 crate を 1 つ追加して workspace 解決できる
+- a minimal test using imported `sis_amount_stark` passes
+- a new local crate can be added and resolved by the workspace
 
 ### Phase 1: Shared Types and State Hashing
 
-目的:
+Goals:
 
-- チャネル状態と署名対象の型を固定する
+- fix the core channel state types and signed payload structure
 
-作業:
+Work:
 
-- `crates/channel-types` に以下を定義
+- define the following in `crates/channel-types`
 - `ChannelParams`
 - `Participant`
 - `ParticipantLeaf`
 - `OffchainState`
 - `SignedState`
 - `UpdateProposalBundle`
-- deterministic hash 関数
-- Merkle root 生成
-- state hash の EIP-712 互換エンコード
+- deterministic hashing functions
+- Merkle root generation
+- EIP-712-compatible state-hash encoding
 
-テスト:
+Tests:
 
-- hash が順序依存で安定している
-- 同じ state から常に同一 hash が出る
-- leaf 改ざんで root が変わる
+- hash stability with deterministic ordering
+- identical states always produce identical hashes
+- leaf mutation changes the root
 
-完了条件:
+Done when:
 
-- state hash / leaf hash / root hash の golden test が揃う
+- golden tests exist for state hash, leaf hash, and root hash
 
 ### Phase 2: Proof Adapter
 
-目的:
+Goals:
 
-- `sis_amount_stark` を channel 用 API に包む
+- wrap `sis_amount_stark` behind a channel-focused API
 
-作業:
+Work:
 
-- `crates/proof-adapter` を作成
-- `BalanceCommitment` 型
-- `AmountCommitment` 型
-- `BalanceOpeningProof` の serialize / verify wrapper
-- witness 生成 helper
-- proof format version 管理
-- upstream crate の API 差分を局所化
+- create `crates/proof-adapter`
+- define `BalanceCommitment`
+- define `AmountCommitment`
+- add serialization / verification wrappers for `BalanceOpeningProof`
+- add witness construction helpers
+- manage proof format versions
+- isolate upstream API differences in one place
 
-テスト:
+Tests:
 
-- balance opening proof の round-trip
-- invalid commitment / invalid proof rejection
+- balance opening proof round-trip
+- invalid commitment rejection
+- invalid proof rejection
 
-完了条件:
+Done when:
 
-- channel code から upstream 型を直接触らずに済む
+- channel code no longer touches upstream proof types directly
 
 ### Phase 3: Homomorphic Transfer Update
 
-目的:
+Goals:
 
-- amount commitment を使う state update ロジックを実装する
+- implement state updates based on amount commitments
 
-作業:
+Work:
 
-- `A = Commit(delta, r_amount)` を扱う API を追加
-- `C_sender_new = C_sender_old - A`
-- `C_receiver_new = C_receiver_old + A`
-- sender の更新後残高 proof 生成
-- `ReceiverWitnessShare(delta, r_amount)` の型と整合性チェック
-- receiver が witness を更新できる helper を追加
+- add API support for `A = Commit(delta, r_amount)`
+- implement `C_sender_new = C_sender_old - A`
+- implement `C_receiver_new = C_receiver_old + A`
+- generate the sender post-update balance proof
+- define `ReceiverWitnessShare(delta, r_amount)` and validate its consistency
+- add helpers for receiver witness updates
 
-テスト:
+Tests:
 
 - happy path
-- sender 残高不足で sender proof が失敗
-- amount commitment と更新後 commitment の加減算整合性
-- receiver witness share 不一致なら拒否
-- `delta = 0` と最大近傍値の境界テスト
+- sender proof fails on insufficient sender balance
+- amount commitment arithmetic matches updated commitments
+- receiver witness-share mismatch is rejected
+- boundary tests around `delta = 0` and near-maximum values
 
-完了条件:
+Done when:
 
-- `UpdateProposalBundle` と `ReceiverWitnessShare` を使ってローカル検証できる
+- local verification works using `UpdateProposalBundle` and `ReceiverWitnessShare`
 
 ### Phase 4: Off-Chain State Machine
 
-目的:
+Goals:
 
-- 全員署名ベースの state 更新ロジックを作る
+- implement the state-update logic around unanimous signatures
 
-作業:
+Work:
 
-- `crates/channel-state` に state machine 実装
+- implement the state machine in `crates/channel-state`
 - `propose_update`
 - `verify_update_bundle`
 - `apply_signed_state`
-- version 競合検出
-- sender / receiver 以外 unchanged チェック
-- latest fully-signed state 保存
+- version conflict detection
+- unchanged checks for all non-sender / non-receiver participants
+- storage of the latest fully signed state
 
-テスト:
+Tests:
 
-- 3 人 channel で A -> B 更新
-- 同時 proposal 競合
-- 旧 state 参照 proposal 拒否
-- sender proof が正しくても `prev_state_hash` 不一致なら拒否
+- three-party channel with an A -> B update
+- concurrent proposal conflict
+- stale proposal rejection
+- `prev_state_hash` mismatch rejection even if the sender proof is otherwise valid
 
-完了条件:
+Done when:
 
-- ローカルだけで 3 人チャネル更新の E2E が通る
+- a three-party end-to-end local update test passes
 
 ### Phase 5: Coordinator / Node API
 
-目的:
+Goals:
 
-- proposal 配布と署名回収を行うノード層を作る
+- implement proposal distribution and signature collection
 
-作業:
+Work:
 
-- `crates/channel-node` に API を実装
+- implement APIs in `crates/channel-node`
 - `create_channel`
 - `propose_payment`
 - `receive_proposal`
 - `sign_state`
 - `finalize_state`
-- storage interface
-- 最新 signed state / 自分の witness 保管
+- storage abstraction
+- persistence for the latest signed state and each party’s witness
 
-MVP 判断:
+MVP guidance:
 
-- まずは single-process integration test で十分
-- 実ネットワーク transport は後回しでもよい
+- a single-process integration test is enough at first
+- real network transport can be deferred
 
-完了条件:
+Done when:
 
-- 擬似ノード 3 体で state 更新フローを再現できる
+- three simulated nodes can execute the update flow
 
 ### Phase 6: Settlement Contract
 
-目的:
+Goals:
 
-- close / challenge / finalize / withdraw をオンチェーン化する
+- implement close / challenge / finalize / withdraw on-chain
 
-作業:
+Work:
 
 - `contracts/src/MultiPartyLatticeChannel.sol`
 - `startClose(channelId, cap, totalBalanceProof)`
 - `challengeState(signedState, signatures)`
 - `finalize(channelId)`
 - `withdraw(withdrawArgs)`
-- `ITotalBalanceVerifier` interface
-- `IBalanceOpeningVerifier` interface
+- `ITotalBalanceVerifier`
+- `IBalanceOpeningVerifier`
 
-MVP では contract 内で本物の lattice verifier を直接実装せず、外部 verifier interface を叩く設計に分離する。
+The MVP keeps the actual lattice verification logic outside the contract and calls external verifier interfaces.
 
-テスト:
+Tests:
 
-- stale state より新 state が勝つ
-- challenge period 終了前 finalize 不可
-- 二重 withdraw 不可
-- `withdrawn_total > channel_cap` を防止
+- a newer state beats a stale state
+- finalize is blocked before the challenge period ends
+- double withdraw is prevented
+- `withdrawn_total > channel_cap` is rejected
 
-完了条件:
+Done when:
 
-- Solidity テストで close から全員 withdraw まで通る
+- Solidity tests cover close through full withdrawal
 
 ### Phase 7: End-to-End Integration
 
-目的:
+Goals:
 
-- オフチェーン state machine と settlement を接続する
+- connect the off-chain state machine to settlement
 
-作業:
+Work:
 
-- Rust 側から signed state export
-- contract へ challenge 用 payload 生成
-- withdraw 用 Merkle proof 生成
-- final state から各 participant の claim package 生成
+- export signed states from Rust
+- generate challenge payloads for the contract
+- generate Merkle proofs for withdraw
+- generate claim packages for each participant from the final state
 
-テスト:
+Tests:
 
-- 3 人チャネルの full lifecycle
-- close 後に古い state を出されても challenge で勝てる
-- 1 人が withdraw しても他人の claim に影響しない
+- full lifecycle for a three-party channel
+- successful challenge against a stale close submission
+- one participant withdrawing does not interfere with others
 
-完了条件:
+Done when:
 
-- `open -> multiple payments -> close -> challenge -> finalize -> withdraw` の統合テストが通る
+- an integration test covers `open -> multiple payments -> close -> challenge -> finalize -> withdraw`
 
-## 3. 優先順位
+## 3. Priorities
 
-優先順位は以下の順に置く。
+Priority order:
 
-1. state hash と署名対象の固定
-2. amount commitment update ロジック
-3. オフチェーン state machine
-4. settlement contract
-5. transport / coordinator 改良
+1. fix the state hash and signed payload shape
+2. implement amount-commitment update logic
+3. implement the off-chain state machine
+4. implement settlement contracts
+5. improve transport and coordination
 
-amount commitment の表現と state hash が固まる前にノード層を広げると、型や署名仕様の手戻りが大きくなる。
+Expanding the node layer before the amount-commitment representation and state hash are stable would create unnecessary rework in types and signature rules.
 
-## 4. 初期実装で固定してよい仮定
+## 4. Assumptions That Are Safe to Freeze Early
 
-- 参加者は固定長配列で管理する
-- 署名は ECDSA/secp256k1
-- 送金額は sender と receiver だけが知る
-- single asset
-- partial signature state は捨てる
-- challenge で受理するのは全員署名 state のみ
+- participants are tracked in fixed-length collections
+- signatures use ECDSA/secp256k1
+- transfer amounts are known only to sender and receiver
+- the MVP is single-asset
+- partially signed states are discarded
+- only unanimously signed states are accepted during challenge
 
-## 5. 先に作るべきテスト
+## 5. Tests to Build Early
 
-実装前半で最重要なのは以下である。
+The most important tests in the early implementation are:
 
-- amount commitment update の境界テスト
-- state hash の golden test
-- 3 人以上での unchanged participant 検証
-- stale state challenge テスト
-- `channel_cap` 超過防止テスト
+- amount-commitment update boundary tests
+- state-hash golden tests
+- unchanged participant checks for channels with three or more parties
+- stale-state challenge tests
+- `channel_cap` overflow-prevention tests
 
-## 6. mainnet 前に必要な追加作業
+## 6. Additional Work Required Before Mainnet
 
-MVP 後の必須課題:
+Required after the MVP:
 
-- toy lattice parameter の置き換え
-- proof system の cryptographic review
-- verifier gas / performance の見積もり
-- aggregate signature の検討
-- receiver witness share の安全な配送
-- watchtower 運用設計
+- replace toy lattice parameters
+- cryptographic review of the proof system
+- verifier gas and performance analysis
+- evaluate aggregated signatures
+- secure receiver witness-share delivery
+- watchtower operations design
 
-## 7. 次の実装ステップ
+## 7. Immediate Next Steps
 
-この文書に沿ってすぐ着手するなら、次の順が最も安全である。
+If development continues from this plan, the safest order is:
 
 1. workspace bootstrap
-2. `channel-types` の state / hash 実装
-3. `proof-adapter` で upstream proof を包む
-4. amount commitment update の最小版を実装
-5. 3 人チャネルのローカル更新テストを書く
+2. implement state / hash types in `channel-types`
+3. wrap the upstream proof crate in `proof-adapter`
+4. implement the minimum amount-commitment update path
+5. write a three-party local update test
